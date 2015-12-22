@@ -26,7 +26,7 @@ SUBJECT=$2
 BODY=$3
 
 TG_CHAT=0 # send message to chat or to private chat to user
-METHOD="txt" # sendMessage (simple text) or sendPhoto (attached image)
+METHOD="image" # sendMessage (simple text) or sendPhoto (attached image)
 
 echo "${BODY}" | grep -q "${ZBX_TG_PREFIX};graphs" && METHOD="image"
 echo "${BODY}" | grep -q "${ZBX_TG_PREFIX};chat" && TG_CHAT=1
@@ -36,9 +36,11 @@ TG_CHAT_ID=$(cat ${TMP_UIDS} | awk -F ';' END'{ print $NF}')
 if [ -z "${TG_CHAT_ID}" ]
 then
     TG_UPDATES=$(${CURL_TG}/getUpdates)
-    TG_CHAT_ID=$(echo "${TG_UPDATES}" | awk -F ',' END'{print $6}' | sed 's/"chat":{"id"://g;/^$/d'
-    
-    echo "${TO};${TG_CHAT_ID}" >> ${TMP_UIDS}
+echo "${TG_UPDATES}"
+    TG_CHAT_ID=$(echo "${TG_UPDATES}" | awk -F ',' END'{print $5}' | sed 's/"chat":{"id"://g;/^$/d')
+echo "${TG_CHAT_ID}"
+
+    echo "${TO};${TG_CONTACT_TYPE};${TG_CHAT_ID}" >> ${TMP_UIDS}
 fi
 
 TG_TEXT=$(echo "${BODY}" | grep -vE "^${ZBX_TG_PREFIX};"; echo "--")
@@ -46,15 +48,18 @@ TG_TEXT=$(echo "${BODY}" | grep -vE "^${ZBX_TG_PREFIX};"; echo "--")
 case "${METHOD}" in
 
     "txt")
+echo "${TG_UPDATES}"
+echo "${TG_CHAT_ID}"
+echo "test"
         ${CURL_TG}/sendMessage -F "chat_id=${TG_CHAT_ID}" -F "text=${SUBJECT}
 ${TG_TEXT}" 2>/dev/null
     ;;
 
     "image")
         PERIOD=3600 # default period
-        echo "${BODY}" | grep -q "^${ZBX_TG_PREFIX};graphs_period" && PERIOD=$(echo "${BODY}" | awk -F '=' /graphs_period/'{print $NF}')  || PERIOD=3600
-        ZBX_ITEMID=$(echo "${BODY}" | awk -F ':' /itemid/'{print $NF}')
-        ZBX_TITLE=$(echo "${BODY}" | awk -F ':' /title/'{print $NF}')
+        echo "${BODY}" | grep -q "^${ZBX_TG_PREFIX};graphs_period" && PERIOD=$(echo "${BODY}" | awk -F 'zbxtg;graphs_period=' '{if ($2 != "") print $2}' | tail -1 | grep -Eo '[0-9]+' || echo 3600)
+        ZBX_ITEMID=$(echo "${BODY}" | awk -F 'zbxtg;itemid:' '{if ($2 != "") print $2}' | tail -1 | grep -Eo '[0-9]+')
+        ZBX_TITLE=$(echo "${BODY}" | awk -F 'zbxtg;title:' '{if ($2 != "") print $2}' | tail -1 | awk '{print $1;}')
         URL="${ZBX_SERVER}/chart3.php?period=${PERIOD}&name=${ZBX_TITLE}&width=900&height=200&graphtype=0&legend=1&items[0][itemid]=${ZBX_ITEMID}&items[0][sortorder]=0&items[0][drawtype]=5&items[0][color]=00CC00"
         login
         CACHE_IMAGE="${TMP_DIR}/graph.${ZBX_ITEMID}.png"
